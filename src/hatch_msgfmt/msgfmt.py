@@ -3,72 +3,46 @@
 # Edited into a hatch plugin by Taylor C. Richberger <tcr@absolute-performance.com>
 
 """Generate binary message catalog from textual translation description.
-
-This program converts a textual Uniforum-style message catalog (.po file) into
-a binary GNU catalog (.mo file).  This is essentially the same function as the
-GNU msgfmt program, however, it is a simpler implementation.  Currently it
-does not handle plural forms but it does handle message contexts.
-
-Usage: msgfmt.py [OPTIONS] filename.po
-
-Options:
-    -o file
-    --output-file=file
-        Specify the output file to write to.  If omitted, output will go to a
-        file named filename.mo (based off the input file name).
-
-    -h
-    --help
-        Print this message and exit.
-
-    -V
-    --version
-        Display version information and exit.
 """
 
-import os
-import sys
-import ast
-import getopt
-import struct
-import array
 from email.parser import HeaderParser
+from io import BytesIO
+from typing import BinaryIO, Optional, MutableMapping, Union
+import array
+import ast
+import struct
 
-__version__ = "1.2"
+def add(
+    messages: MutableMapping[bytes, bytes],
+    ctxt: Optional[bytes],
+    id: Optional[bytes],
+    str: Optional[bytes],
+    fuzzy: bool) -> None:
 
-MESSAGES = {}
-
-
-def usage(code, msg=''):
-    print(__doc__, file=sys.stderr)
-    if msg:
-        print(msg, file=sys.stderr)
-    sys.exit(code)
-
-
-def add(ctxt, id, str, fuzzy):
     "Add a non-fuzzy translation to the dictionary."
-    global MESSAGES
     if not fuzzy and str:
+        assert str is not None
+        assert id is not None
+
         if ctxt is None:
-            MESSAGES[id] = str
+            messages[id] = str
         else:
-            MESSAGES[b"%b\x04%b" % (ctxt, id)] = str
+            messages[b"%b\x04%b" % (ctxt, id)] = str
 
 
-def generate():
+def generate(messages: MutableMapping[bytes, bytes]) -> bytes:
     "Return the generated output."
-    global MESSAGES
+
     # the keys are sorted in the .mo file
-    keys = sorted(MESSAGES.keys())
+    keys = sorted(messages.keys())
     offsets = []
     ids = strs = b''
     for id in keys:
         # For each string, we need size and file offset.  Each string is NUL
         # terminated; the NUL does not count into the size.
-        offsets.append((len(ids), len(id), len(strs), len(MESSAGES[id])))
+        offsets.append((len(ids), len(id), len(strs), len(messages[id])))
         ids += id + b'\0'
-        strs += MESSAGES[id] + b'\0'
+        strs += messages[id] + b'\0'
     output = ''
     # The header is 7 32-bit unsigned integers.  We don't use hash tables, so
     # the keys start right after the index tables.
@@ -97,32 +71,26 @@ def generate():
     return output
 
 
-def make(filename, outfile):
+def make(input: Union[BinaryIO, bytes]) -> bytes:
+    messages: MutableMapping[bytes, bytes] = {}
     ID = 1
     STR = 2
     CTXT = 3
 
-    # Compute .mo name from .po name and arguments
-    if filename.endswith('.po'):
-        infile = filename
-    else:
-        infile = filename + '.po'
-    if outfile is None:
-        outfile = os.path.splitext(infile)[0] + '.mo'
+    if isinstance(input, bytes):
+        input = BytesIO(input)
 
-    try:
-        with open(infile, 'rb') as f:
-            lines = f.readlines()
-    except IOError as msg:
-        print(msg, file=sys.stderr)
-        sys.exit(1)
+    lines = input.readlines()
 
     section = msgctxt = None
-    fuzzy = 0
+    fuzzy = False
 
     # Start off assuming Latin-1, so everything decodes without failure,
     # until we know the exact encoding
     encoding = 'latin-1'
+    msgid = None
+    msgstr = None
+    is_plural = False
 
     # Parse the catalog
     lno = 0
@@ -131,26 +99,27 @@ def make(filename, outfile):
         lno += 1
         # If we get a comment line after a msgstr, this is a new entry
         if l[0] == '#' and section == STR:
-            add(msgctxt, msgid, msgstr, fuzzy)
+            add(messages, msgctxt, msgid, msgstr, fuzzy)
             section = msgctxt = None
-            fuzzy = 0
+            fuzzy = False
         # Record a fuzzy mark
         if l[:2] == '#,' and 'fuzzy' in l:
-            fuzzy = 1
+            fuzzy = True
         # Skip comments
         if l[0] == '#':
             continue
         # Now we are in a msgid or msgctxt section, output previous section
         if l.startswith('msgctxt'):
             if section == STR:
-                add(msgctxt, msgid, msgstr, fuzzy)
+                add(messages, msgctxt, msgid, msgstr, fuzzy)
             section = CTXT
             l = l[7:]
             msgctxt = b''
         elif l.startswith('msgid') and not l.startswith('msgid_plural'):
             if section == STR:
-                add(msgctxt, msgid, msgstr, fuzzy)
+                add(messages, msgctxt, msgid, msgstr, fuzzy)
                 if not msgid:
+                    assert msgstr
                     # See whether there is an encoding declaration
                     p = HeaderParser()
                     charset = p.parsestr(msgstr.decode(encoding)).get_content_charset()
@@ -163,10 +132,10 @@ def make(filename, outfile):
         # This is a message with plural forms
         elif l.startswith('msgid_plural'):
             if section != ID:
-                print('msgid_plural not preceded by msgid on %s:%d' % (infile, lno),
-                      file=sys.stderr)
-                sys.exit(1)
+                raise RuntimeError('msgid_plural not preceded by msgid')
+
             l = l[12:]
+            assert msgid
             msgid += b'\0' # separator of singular and plural
             is_plural = True
         # Now we are in a msgstr section
@@ -174,17 +143,13 @@ def make(filename, outfile):
             section = STR
             if l.startswith('msgstr['):
                 if not is_plural:
-                    print('plural without msgid_plural on %s:%d' % (infile, lno),
-                          file=sys.stderr)
-                    sys.exit(1)
+                    raise RuntimeError('plural without msgid_plural')
                 l = l.split(']', 1)[1]
                 if msgstr:
                     msgstr += b'\0' # Separator of the various plural forms
             else:
                 if is_plural:
-                    print('indexed msgstr required for plural on  %s:%d' % (infile, lno),
-                          file=sys.stderr)
-                    sys.exit(1)
+                    raise RuntimeError('indexed msgstr required for plural')
                 l = l[6:]
         # Skip empty lines
         l = l.strip()
@@ -198,50 +163,11 @@ def make(filename, outfile):
         elif section == STR:
             msgstr += l.encode(encoding)
         else:
-            print('Syntax error on %s:%d' % (infile, lno), \
-                  'before:', file=sys.stderr)
-            print(l, file=sys.stderr)
-            sys.exit(1)
+            raise RuntimeError('Syntax error')
+
     # Add last entry
     if section == STR:
-        add(msgctxt, msgid, msgstr, fuzzy)
+        add(messages, msgctxt, msgid, msgstr, fuzzy)
 
     # Compute output
-    output = generate()
-
-    try:
-        with open(outfile,"wb") as f:
-            f.write(output)
-    except IOError as msg:
-        print(msg, file=sys.stderr)
-
-
-def main():
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], 'hVo:',
-                                   ['help', 'version', 'output-file='])
-    except getopt.error as msg:
-        usage(1, msg)
-
-    outfile = None
-    # parse options
-    for opt, arg in opts:
-        if opt in ('-h', '--help'):
-            usage(0)
-        elif opt in ('-V', '--version'):
-            print("msgfmt.py", __version__)
-            sys.exit(0)
-        elif opt in ('-o', '--output-file'):
-            outfile = arg
-    # do it
-    if not args:
-        print('No input file given', file=sys.stderr)
-        print("Try `msgfmt --help' for more information.", file=sys.stderr)
-        return
-
-    for filename in args:
-        make(filename, outfile)
-
-
-if __name__ == '__main__':
-    main()
+    return generate(messages)
