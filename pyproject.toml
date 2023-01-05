@@ -1,6 +1,6 @@
 [project]
 name = 'hatch-msgfmt'
-version = '0.0.19'
+version = '1.0.0'
 description = 'Msgfmt build hook, replacing all po with mo in build'
 license = {text = 'MIT'}
 readme = 'README.md'
@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 classifiers = [
-  'Development Status :: 1 - Planning',
+  'Development Status :: 5 - Production/Stable',
   'Programming Language :: Python :: 3',
   'Framework :: Hatch',
 ]
