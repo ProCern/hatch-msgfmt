@@ -16,7 +16,7 @@ class UnopenedTemporaryFile:
         self.__bytes = None
         self.__path = None
 
-        self.cleanup = finalize(self, lambda path: path.unlink(), self.path)
+        self.cleanup = finalize(self, lambda file: os.remove(file), pathname)
 
     def __enter__(self) -> Path:
         assert self.cleanup.alive, 'File has been deleted'
