@@ -19,16 +19,12 @@ class UnopenedTemporaryFile:
         self.cleanup = finalize(self, lambda file: os.remove(file), pathname)
 
     def __enter__(self) -> Path:
-        assert self.cleanup.alive, 'File has been deleted'
         return self.path
 
     def __exit__(self, type, value, traceback) -> None:
-        assert self.cleanup.alive, 'File has been deleted'
         self.cleanup()
-        self.__dead = True
 
     def __str__(self) -> str:
-        assert self.cleanup.alive, 'File has been deleted'
         if self.__str is None:
             if isinstance(self.name, str):
                 self.__str = self.name
@@ -38,7 +34,6 @@ class UnopenedTemporaryFile:
         return self.__str
 
     def __bytes__(self) -> bytes:
-        assert self.cleanup.alive, 'File has been deleted'
         if self.__bytes == None:
             if isinstance(self.name, bytes):
                 self.__bytes = self.name
@@ -49,7 +44,6 @@ class UnopenedTemporaryFile:
 
     @property
     def path(self) -> Path:
-        assert self.cleanup.alive, 'File has been deleted'
         if self.__path is None:
             self.__path = Path(str(self))
 
