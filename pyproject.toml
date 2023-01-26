@@ -1,6 +1,6 @@
 [project]
 name = 'hatch-msgfmt'
-version = '1.1.2'
+version = '1.1.4'
 description = 'Msgfmt build hook, replacing all po with mo in build'
 license = {text = 'MIT'}
 readme = 'README.md'

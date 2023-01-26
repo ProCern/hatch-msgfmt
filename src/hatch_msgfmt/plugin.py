@@ -15,14 +15,16 @@ class MsgfmtBuildHook(BuildHookInterface):
         if self.target_name != 'wheel':
             return
 
-        for included in self.build_config.builder.recurse_included_files():
-            distribution_path = Path(included.distribution_path)
-            if distribution_path.suffix == '.po':
-                path = Path(included.path)
-                output = UnopenedTemporaryFile(suffix='.mo')
+        root = Path(self.root)
+        locales = root / Path(self.config['locales'])
+        destination = Path(self.config['destination'])
 
-                run(['msgfmt', '-o', str(output), str(path)], check=True, stdin=DEVNULL)
+        for po in locales.glob('**/*.po'):
+            dest = destination / po.relative_to(locales)
 
-                self.__files.append(output)
-                build_data['force_include'][str(output)] = str(distribution_path.with_suffix('.mo'))
-                path.unlink()
+            output = UnopenedTemporaryFile(suffix='.mo')
+
+            run(['msgfmt', '-o', str(output), str(po)], check=True, stdin=DEVNULL)
+
+            self.__files.append(output)
+            build_data['force_include'][str(output)] = str(dest)

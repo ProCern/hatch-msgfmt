@@ -13,6 +13,10 @@ Better to just use the system one for now.  If somebody wants to submit a pure-
 python implementation that functions, I'll gladly integrate it as a separate
 msgfmtpy plugin in the same repository.
 
+Depends on the `locales` and `destinations` plugin config parameters,
+specifying where the source locale files and destination compiled locale files
+should be found.
+
 # Copyright
 
 This plugin is Copyright 2023 Absolute Performance, Inc.
