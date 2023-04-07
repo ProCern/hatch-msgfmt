@@ -19,12 +19,14 @@ class MsgfmtBuildHook(BuildHookInterface):
         root = Path(self.root)
         locales = root / Path(self.config['locales'])
         destination = Path(self.config['destination'])
-        input_re = self.config['input_re']
-        output_sub = self.config['output_sub']
+        input_re = self.config.get('input_re')
+        output_sub = self.config.get('output_sub')
 
         for po in locales.glob('**/*.po'):
-            mo = po.relative_to(locales)
+            mo = po.relative_to(locales).with_suffix('.mo')
             if input_re:
+                if not isinstance(output_sub, str):
+                    raise TypeError('output_sub must be a string')
                 mo = Path(re.sub(input_re, output_sub, str(mo)))
             dest = str(destination / mo)
 
