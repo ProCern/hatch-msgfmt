@@ -11,14 +11,25 @@ EUC-JP, which could feasibly cause particular problems.
 
 Better to just use the system one for now.  If somebody wants to submit a pure-
 python implementation that functions, I'll gladly integrate it as a separate
-msgfmtpy plugin in the same repository.
+`msgfmtpy` plugin in the same repository.
 
-Depends on the `locales` and `destinations` plugin config parameters,
-specifying where the source locale files and destination compiled locale files
-should be found.
+# Config parameters
+
+* `locales`: The location of the source `.po` files.
+
+* `destination`: The location of the destination `.mo` files.  They will be put
+  into this location in the same structure as the source tree relative to the
+  `locales` path.
+
+* `pathsub_regex` (optional): An input regex to match against source files for
+  name changes.
+
+* `pathsub_replace` (required if `pathsub_regex` is present): An replacement
+  pattern to use for name changes.
 
 # Copyright
 
-This plugin is Copyright 2023 Absolute Performance, Inc.
+This plugin is Copyright 2023 Absolute Performance, Inc. with contributions by
+[Adrián Chaves](https://github.com/Gallaecio).
 
 MIT licensed.

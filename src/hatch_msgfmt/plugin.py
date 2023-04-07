@@ -1,4 +1,5 @@
-from typing import Any, Mapping
+import re
+from typing import Any, Mapping, Optional
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 from pathlib import Path
 from subprocess import run, DEVNULL
@@ -18,13 +19,26 @@ class MsgfmtBuildHook(BuildHookInterface):
         root = Path(self.root)
         locales = root / Path(self.config['locales'])
         destination = Path(self.config['destination'])
+        pathsub_regex: Optional[re.Pattern] = None
+
+        if 'pathsub_regex' in self.config:
+            pathsub_regex = re.compile(self.config['pathsub_regex'])
+
+        pathsub_replace = self.config.get('pathsub_replace')
 
         for po in locales.glob('**/*.po'):
-            dest = destination / po.relative_to(locales)
+            mo = po.relative_to(locales).with_suffix('.mo')
+
+            if pathsub_regex is not None:
+                if not isinstance(pathsub_replace, str):
+                    raise TypeError('pathsub_replace must be a string')
+                mo = Path(re.sub(pathsub_regex, pathsub_replace, str(mo)))
+
+            dest = str(destination / mo)
 
             output = UnopenedTemporaryFile(suffix='.mo')
 
             run(['msgfmt', '-o', str(output), str(po)], check=True, stdin=DEVNULL)
 
             self.__files.append(output)
-            build_data['force_include'][str(output)] = str(dest)
+            build_data['force_include'][str(output)] = dest
